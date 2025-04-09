@@ -26,7 +26,7 @@
             <th>수신자</th>
             <td colspan="3">
               <div class="horizontal-cell">
-                <button class="select-btn" @click="selectRecipient">선택</button>
+                <button class="select-btn" @click="openPopup('recipients')">선택</button>
                 <div class="tag-list">
                   <span class="tag-item" v-for="(r, index) in recipients" :key="index">
                     {{ r }}
@@ -39,7 +39,7 @@
             <th>시행자</th>
             <td colspan="3">
               <div class="horizontal-cell">
-                <button class="select-btn" @click="selectExecutor">선택</button>
+                <button class="select-btn" @click="openPopup('executors')">선택</button>
                 <div class="tag-list">
                   <span class="tag-item" v-for="(r, index) in executors" :key="index">
                     {{ r }}
@@ -48,6 +48,25 @@
               </div>
             </td>
           </tr>
+
+          <!-- 🔽 팝업 -->
+          <div v-if="showPopup" class="popup-overlay">
+            <div class="popup-box">
+              <h3>
+                <strong>{{ popupTargetLabel }} 이름을 입력하세요</strong>
+              </h3>
+              <input
+                v-model="newName"
+                placeholder="이름을 입력하세요"
+                maxlength="4"
+                class="name-input"
+              />
+              <div class="popup-buttons">
+                <button class="btn-confirm" @click="addNameToTarget">추가</button>
+                <button class="btn-cancel" @click="closePopup">취소</button>
+              </div>
+            </div>
+          </div>
         </tbody>
       </table>
 
@@ -64,8 +83,7 @@
         <div class="editor-content">
           <VueTextEditor ref="editorRef" v-model:value="editorContent" />
           <button class="submit-btn" @click="submit">미리보기</button>
-          <button class="submit-btn" @click="printPage">🖨️ 프린트</button>
-          <button @click="printPage">🖨️ 프린트</button>
+          <button style="margin-left: 5px" @click="printPage">🖨️ 프린트</button>
         </div>
         <!-- 아래는 출력용 -->
         <div
@@ -87,29 +105,47 @@ import { ref } from 'vue'
 // import VueTextEditor from '@/components/editor/quill/QuillEditor.vue'
 import VueTextEditor from '@/components/editor/tiptap/NewTipTapEditor.vue'
 
-const draftDate = '2025-04-08'
+const draftDate = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD' 형태
 const retentionPeriod = '3년'
 const docNumber = 'DOC-2025-0421'
 const department = '서비스개발팀'
 const drafter = '최정화 매니저'
 
-const recipients = ['벨라', '젤리']
-const executors = ['제이', '정화']
+const recipients = ref(['벨라', '젤리'])
+const executors = ref(['제이', '정화'])
 const title = ref('')
 
 const editorContent = ref('')
 const editorRef = ref(null)
 const previewHTML = ref('')
 
-function selectRecipient() {
-  alert('수신자 선택 버튼 클릭됨')
-  // 여기에 모달 호출 또는 사용자 선택 로직 연결 가능
-}
-function selectExecutor() {
-  alert('시행자 선택 버튼 클릭됨')
-  // 여기에 모달 호출 또는 사용자 선택 로직 연결 가능
+const showPopup = ref(false)
+const popupTarget = ref('')
+const popupTargetLabel = ref('수신자')
+const newName = ref('')
+
+function openPopup(target) {
+  popupTarget.value = target
+  popupTargetLabel.value = target === 'recipients' ? '수신자' : '시행자'
+  newName.value = ''
+  showPopup.value = true
 }
 
+function addNameToTarget() {
+  if (!newName.value.trim()) return
+
+  if (popupTarget.value === 'recipients') {
+    recipients.value.push(newName.value)
+  } else if (popupTarget.value === 'executors') {
+    executors.value.push(newName.value)
+  }
+
+  closePopup()
+}
+
+function closePopup() {
+  showPopup.value = false
+}
 function submit() {
   console.log('📝 작성한 내용111:', editorRef.value?.getEditorHTML())
   if (editorRef.value?.getEditorHTML) {
@@ -160,13 +196,13 @@ const printPage = () => {
             <tr>
               <th>수신자</th>
               <td colspan="3">
-                ${recipients.map((r) => `<span class="tag-item">${r}</span>`).join(', ')}
+                ${recipients.value.map((r) => `<span class="tag-item">${r}</span>`).join(', ')}
               </td>
             </tr>
             <tr>
               <th>시행자</th>
               <td colspan="3">
-                ${executors.map((r) => `<span class="tag-item">${r}</span>`).join(', ')}
+                ${executors.value.map((r) => `<span class="tag-item">${r}</span>`).join(', ')}
               </td>
             </tr>
             <tr>
@@ -335,6 +371,60 @@ label {
   border: 1px solid #ccc;
   background-color: #f9f9f9;
 }
+
+/* 이름 입력 팝업 */
+.popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.popup-box {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  width: 300px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.name-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.popup-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn-confirm,
+.btn-cancel {
+  padding: 6px 12px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-confirm {
+  background-color: #4caf50;
+  color: white;
+}
+
+.btn-cancel {
+  background-color: #f44336;
+  color: white;
+}
+
 /* 반응형 대응 */
 @media (max-width: 1082px) {
   .approval-view {
