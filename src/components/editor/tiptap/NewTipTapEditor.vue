@@ -412,12 +412,10 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-bottom: 0px;
+  margin-bottom: 10px;
 }
 .toolbar .active {
-  padding: 2px;
   background-color: #f0f0f0;
-  border: 1px solid #ccc;
   cursor: pointer;
 }
 
