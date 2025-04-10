@@ -146,8 +146,9 @@ function addNameToTarget() {
 function closePopup() {
   showPopup.value = false
 }
+
+// 에디터 미리보기
 function submit() {
-  console.log('📝 작성한 내용111:', editorRef.value?.getEditorHTML())
   if (editorRef.value?.getEditorHTML) {
     previewHTML.value = editorRef.value.getEditorHTML()
   }
