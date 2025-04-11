@@ -15,7 +15,10 @@
         <option value="Noto Sans KR">Noto Sans KR</option>
       </select>
 
-      <BoldIcon @click="toggleBold" :class="{ active: editor?.isActive('bold') }" />
+      <BoldIcon
+        @click="editor.chain().focus().toggleBold().run()"
+        :class="{ active: editor?.isActive('bold') }"
+      />
       <ItalicIcon
         @click="editor.chain().focus().toggleItalic().run()"
         :class="{ active: editor.isActive('italic') }"
@@ -36,8 +39,8 @@
         <option value="center">가운데</option>
         <option value="right">오른쪽</option>
       </select>
-      <button ref="tableOptionsRef" @click="toggleOptions">📝표 삽입</button>
-      <div v-if="showTableOptions" class="table-options">
+      <button ref="buttonRef" @click="toggleOptions">📝표 삽입</button>
+      <div v-if="showTableOptions" class="table-options" ref="optionsRef">
         <input
           v-model.number="tableRows"
           type="number"
@@ -52,10 +55,10 @@
           placeholder="열"
           style="width: 60px"
         />
-        <label style="font-size: 14px">
+        <!--        <label style="font-size: 14px">
           <input v-model="withHeaderRow" type="checkbox" />
           헤더
-        </label>
+        </label>-->
         <input
           type="color"
           v-model="selectedTableColor"
@@ -63,13 +66,7 @@
           style="width: 32px; height: 32px; padding: 0; border: none; cursor: pointer"
         />
         <button @click="insertTable">삽입</button>
-
-        <button
-          @click="editor.chain().focus().mergeCells().run()"
-          :disabled="!editor.can().mergeCells()"
-        >
-          셀 병합
-        </button>
+        <button @click="editor.chain().focus().addRowAfter().run()">⬇️ 행 추가</button>
         <button
           @click="editor.chain().focus().deleteTable().run()"
           :disabled="!editor.can().deleteTable()"
@@ -101,7 +98,11 @@ import BoldIcon from 'vue-material-design-icons/FormatBold.vue'
 import ItalicIcon from 'vue-material-design-icons/FormatItalic.vue'
 import UnderlineIcon from 'vue-material-design-icons/FormatUnderline.vue'
 import { FontSize } from 'tiptap-extension-font-size'
-import CustomTableCell from '@/lib/tiptap/CustomTableCell'
+// import CustomTableCell from '@/lib/tiptap/CustomTableCell'
+// import CustomTableHeader from '@/lib/tiptap/CustomTableHeader'
+
+/// 이미지
+import Image from '@tiptap/extension-image'
 
 // HTML에서 스타일과 콘텐츠를 파싱하는 함수
 const parseContentFromHTML = (html) => {
@@ -193,6 +194,31 @@ const CustomTextStyle = TextStyle.extend({
   },
 })
 
+// 커스텀 Image 확장 (크기 조정 지원)
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: '300px', // 기본 너비
+        parseHTML: (element) => element.getAttribute('width') || element.style.width,
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {}
+          return { width: attributes.width }
+        },
+      },
+      height: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('height') || element.style.height,
+        renderHTML: (attributes) => {
+          if (!attributes.height) return {}
+          return { height: attributes.height }
+        },
+      },
+    }
+  },
+})
+
 // 에디터와 현재 폰트 상태 정의
 const currentFont = ref('')
 
@@ -208,7 +234,8 @@ const editor = new Editor({
     CustomTextStyle, // 글씨체 수정 지원
     Underline,
     Color,
-    CustomTableCell, // ← 위에서 만든 확장
+    // CustomTableCell, // 테이블셀 커스터마이징
+    // CustomTableHeader, // 테이블헤더 커스터마이징
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
     TableRow,
@@ -217,6 +244,10 @@ const editor = new Editor({
     GlobalDragHandle.configure({
       dragHandleWidth: 20,
       scrollThreshold: 100,
+    }),
+    ResizableImage.configure({
+      inline: true, // 이미지를 인라인으로 삽입
+      allowBase64: true, // Base64 이미지 허용
     }),
   ],
   editorProps: {
@@ -234,6 +265,23 @@ const editor = new Editor({
       }
     },
     handlePaste(view, event) {
+      const items = event.clipboardData?.items
+      if (!items) return false
+
+      for (const item of items) {
+        if (item.type.includes('image')) {
+          // 이미지 처리
+          const file = item.getAsFile()
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            const src = e.target.result
+            editor.chain().focus().setImage({ src, width: '500px' }).run()
+          }
+          reader.readAsDataURL(file)
+          return true
+        }
+      }
+
       const html = event.clipboardData.getData('text/html')
       const text = event.clipboardData.getData('text/plain')
 
@@ -245,8 +293,16 @@ const editor = new Editor({
         // 필요한 내용만 추출: <table>과 일반 텍스트 포함
         const body = doc.body
 
+        // TODO 수정필요
         // body가 존재하면 그대로 innerHTML로 처리
         editor.commands.insertContent(body.innerHTML)
+        /*
+          이 코드는 복사한 테이블 전체를 에디터 커서 위치에 "그냥 넣어버리는" 형태입니다.
+          즉, 기존 표 안의 셀에 "붙여넣기"가 아니라 "전체 표 삽입"으로 처리돼요
+          >>> 셀 단위로 데이터를 추출해서 현재 선택된 표에 맞게 삽입하는 로직이 필요합니다.
+          이를 위해 붙여넣은 <table>을 파싱하고, 현재 선택된 테이블의 위치에 순차적으로 넣는 방식으로 작성해야 해요.
+        * */
+
         return true
       }
 
@@ -260,7 +316,7 @@ const editor = new Editor({
         return true
       }
 
-      return false
+      // return false
     },
     handleDrop: (view, event) => {
       const text = event.dataTransfer.getData('text/plain')
@@ -282,15 +338,6 @@ const editor = new Editor({
     },
   },
 })
-// 굵게 토글 함수
-const toggleBold = () => {
-  if (!editor) {
-    console.error('Editor is not initialized yet')
-    return
-  }
-  editor.chain().focus().toggleBold().run()
-  console.log('Bold toggled:', editor.isActive('bold')) // 디버깅용
-}
 // 폰트 설정 함수
 const setFont = (font) => {
   if (!editor) {
@@ -317,11 +364,12 @@ const currentTextAlign = computed(() => {
 
 // 표 삽입 옵션
 const showTableOptions = ref(false)
-const tableOptionsRef = ref(null)
+const buttonRef = ref(null)
+const optionsRef = ref(null)
 
 const tableRows = ref(3)
 const tableCols = ref(3)
-const withHeaderRow = ref(true)
+// const withHeaderRow = ref(true)
 const selectedTableColor = ref('#f6f6f6')
 
 const setColor = (e) => {
@@ -341,6 +389,7 @@ const setFontSize = (e) => {
 
 const setTextAlign = (e) => {
   const align = e.target.value
+  console.log('>>align > ', align)
   editor.chain().focus().setTextAlign(align).run()
 }
 
@@ -351,7 +400,7 @@ const insertTable = () => {
     .insertTable({
       rows: tableRows.value,
       cols: tableCols.value,
-      withHeaderRow: withHeaderRow.value,
+      withHeaderRow: false, // 헤더 선 나오겠금.
     })
     .command(({ tr }) => {
       // 표 전체 셀 색상 초기 설정
@@ -378,8 +427,15 @@ defineExpose({
   getEditorHTML: () => editor.getHTML(),
 })
 
+// 표 모달창 열려 있을때 다른 곳 클릭하면 모달창 닫기 이벤트
 const handleClickOutside = (event) => {
-  if (tableOptionsRef?.value && !tableOptionsRef.value.contains(event.target)) {
+  const clickedOutside =
+    buttonRef.value &&
+    optionsRef.value &&
+    !buttonRef.value.contains(event.target) &&
+    !optionsRef.value.contains(event.target)
+
+  if (clickedOutside) {
     showTableOptions.value = false
   }
 }
@@ -479,6 +535,15 @@ onBeforeUnmount(() => {
   padding-top: 10px;
 }
 
+/* 에디터 높이 설정
+(<style scoped>를 사용중으로 .ProseMirror는 내부에서 직접 렌더링되는 외부 DOM이라 scoped CSS의 영향을 받지 않음  :deep()이나 ::v-deep을 써야 함)
+*/
+::v-deep(.ProseMirror) {
+  height: 400px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
 .editor-content :deep(table) {
   width: 100%;
   border-collapse: collapse;
@@ -497,8 +562,8 @@ onBeforeUnmount(() => {
 }
 
 .editor-content :deep(th) {
-  background-color: #f5f5f5;
-  /*font-weight: bold;*/
+  /*background-color: #f5f5f5;*/
+  font-weight: bold;
 }
 
 .drag-handle {
