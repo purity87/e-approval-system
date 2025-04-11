@@ -89,8 +89,6 @@ import Color from '@tiptap/extension-color'
 import TextAlign from '@tiptap/extension-text-align'
 import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
-import TableCell from '@tiptap/extension-table-cell'
-import TableHeader from '@tiptap/extension-table-header'
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle'
 
 // import { Bold } from '@tiptap/extension-bold'
@@ -98,83 +96,11 @@ import BoldIcon from 'vue-material-design-icons/FormatBold.vue'
 import ItalicIcon from 'vue-material-design-icons/FormatItalic.vue'
 import UnderlineIcon from 'vue-material-design-icons/FormatUnderline.vue'
 import { FontSize } from 'tiptap-extension-font-size'
-// import CustomTableCell from '@/lib/tiptap/CustomTableCell'
-// import CustomTableHeader from '@/lib/tiptap/CustomTableHeader'
+import CustomTableCell from '@/lib/tiptap/CustomTableCell'
+import CustomTableHeader from '@/lib/tiptap/CustomTableHeader'
 
 /// 이미지
 import Image from '@tiptap/extension-image'
-
-// HTML에서 스타일과 콘텐츠를 파싱하는 함수
-const parseContentFromHTML = (html) => {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(html, 'text/html')
-  const table = doc.querySelector('table')
-  const content = []
-
-  const extractStyles = (element) => {
-    const style = element.getAttribute('style') || ''
-    const fontSizeMatch = style.match(/font-size:\s*([^;]+)/i)
-    const fontFamilyMatch = style.match(/font-family:\s*([^;]+)/i)
-    const backgroundColorMatch = style.match(/background-color:\s*([^;]+)/i)
-
-    const marks = []
-    if (fontSizeMatch)
-      marks.push({ type: 'textStyle', attrs: { fontSize: fontSizeMatch[1].trim() } })
-    if (fontFamilyMatch)
-      marks.push({ type: 'textStyle', attrs: { fontFamily: fontFamilyMatch[1].trim() } })
-    if (element.style.fontWeight === 'bold' || element.querySelector('b'))
-      marks.push({ type: 'bold' })
-    if (element.style.fontStyle === 'italic' || element.querySelector('i'))
-      marks.push({ type: 'italic' })
-    if (element.style.textDecoration === 'underline' || element.querySelector('u'))
-      marks.push({ type: 'underline' })
-    if (element.style.color) marks.push({ type: 'color', attrs: { color: element.style.color } })
-
-    const attrs = {}
-    if (backgroundColorMatch) attrs.backgroundColor = backgroundColorMatch[1].trim()
-
-    return { marks, attrs }
-  }
-
-  if (table) {
-    const rows = Array.from(table.querySelectorAll('tr')).map((row) => {
-      const cells = Array.from(row.querySelectorAll('td, th')).map((cell) => {
-        const { marks, attrs } = extractStyles(cell)
-        return {
-          type: cell.tagName.toLowerCase() === 'th' ? 'tableHeader' : 'tableCell',
-          attrs,
-          content: [
-            {
-              type: 'paragraph',
-              content: cell.textContent.trim()
-                ? [{ type: 'text', text: cell.textContent.trim(), marks }]
-                : [],
-            },
-          ],
-        }
-      })
-      return { type: 'tableRow', content: cells }
-    })
-    content.push({ type: 'table', content: rows, attrs: { resizable: true } })
-  } else {
-    const nodes = Array.from(doc.body.childNodes).filter(
-      (node) => node.nodeName === 'P' || node.nodeType === 3 || node.nodeName === 'SPAN',
-    )
-    nodes.forEach((node) => {
-      const { marks, attrs } = extractStyles(node)
-      const textContent = node.textContent.trim()
-      if (textContent) {
-        content.push({
-          type: 'paragraph',
-          attrs,
-          content: [{ type: 'text', text: textContent, marks }],
-        })
-      }
-    })
-  }
-
-  return { type: 'doc', content: content.length ? content : [{ type: 'paragraph', content: [] }] }
-}
 
 // 커스텀 TextStyle 확장 (fontFamily 지원)
 const CustomTextStyle = TextStyle.extend({
@@ -234,13 +160,11 @@ const editor = new Editor({
     CustomTextStyle, // 글씨체 수정 지원
     Underline,
     Color,
-    // CustomTableCell, // 테이블셀 커스터마이징
-    // CustomTableHeader, // 테이블헤더 커스터마이징
+    CustomTableCell, // 테이블셀 커스터마이징
+    CustomTableHeader, // 테이블헤더 커스터마이징
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
     TableRow,
-    TableHeader,
-    TableCell,
     GlobalDragHandle.configure({
       dragHandleWidth: 20,
       scrollThreshold: 100,
@@ -262,78 +186,6 @@ const editor = new Editor({
       // 새로 입력하는 텍스트에도 현재 폰트 적용
       if (currentFont.value) {
         editor.chain().setMark('textStyle', { fontFamily: currentFont.value }).run()
-      }
-    },
-    handlePaste(view, event) {
-      const items = event.clipboardData?.items
-      if (!items) return false
-
-      for (const item of items) {
-        if (item.type.includes('image')) {
-          // 이미지 처리
-          const file = item.getAsFile()
-          const reader = new FileReader()
-          reader.onload = (e) => {
-            const src = e.target.result
-            editor.chain().focus().setImage({ src, width: '500px' }).run()
-          }
-          reader.readAsDataURL(file)
-          return true
-        }
-      }
-
-      const html = event.clipboardData.getData('text/html')
-      const text = event.clipboardData.getData('text/plain')
-
-      if (html) {
-        // HTML 내용이 있으면 parsing 후 삽입
-        const parser = new DOMParser()
-        const doc = parser.parseFromString(html, 'text/html')
-
-        // 필요한 내용만 추출: <table>과 일반 텍스트 포함
-        const body = doc.body
-
-        // TODO 수정필요
-        // body가 존재하면 그대로 innerHTML로 처리
-        editor.commands.insertContent(body.innerHTML)
-        /*
-          이 코드는 복사한 테이블 전체를 에디터 커서 위치에 "그냥 넣어버리는" 형태입니다.
-          즉, 기존 표 안의 셀에 "붙여넣기"가 아니라 "전체 표 삽입"으로 처리돼요
-          >>> 셀 단위로 데이터를 추출해서 현재 선택된 표에 맞게 삽입하는 로직이 필요합니다.
-          이를 위해 붙여넣은 <table>을 파싱하고, 현재 선택된 테이블의 위치에 순차적으로 넣는 방식으로 작성해야 해요.
-        * */
-
-        return true
-      }
-
-      if (text) {
-        // 일반 텍스트는 줄바꿈 기준으로 <p>로 나눠서 삽입
-        const paragraphs = text.split('\n').map((line) => ({
-          type: 'paragraph',
-          content: [{ type: 'text', text: line }],
-        }))
-        editor.commands.insertContent(paragraphs)
-        return true
-      }
-
-      // return false
-    },
-    handleDrop: (view, event) => {
-      const text = event.dataTransfer.getData('text/plain')
-      const html = event.dataTransfer.getData('text/html')
-      const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })
-      if (!pos) return
-
-      if (html) {
-        const parsedContent = parseContentFromHTML(html)
-        editor.commands.insertContentAt(pos.pos, parsedContent)
-        return true
-      } else if (text) {
-        editor.commands.insertContentAt(pos.pos, {
-          type: 'paragraph',
-          content: [{ type: 'text', text }],
-        })
-        return true
       }
     },
   },
